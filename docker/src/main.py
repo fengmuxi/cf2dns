@@ -11,6 +11,7 @@ from log import Logger
 import traceback
 import configparser
 import json
+import subprocess
 
 file = 'src/config.ini'
 # 创建配置文件对象
@@ -176,6 +177,74 @@ def main(cloud):
             traceback.print_exc()  
             log_cf2dns.logger.error("CHANGE DNS ERROR: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----MESSAGE: " + str(e))
 
+def main_file(cloud):
+    global AFFECT_NUM, TYPE, DOMAINS
+    recordType = "A"
+    if len(DOMAINS) > 0:
+        try:
+            # 假设要执行的可执行文件是 /usr/bin/firefox
+            process = subprocess.Popen(['./CloudflareST/CloudflareST', '-f', './CloudflareST/ip.txt', '-o',
+                                        './CloudflareST/result_ddns.txt'])
+            # 可以在这里做其他操作，比如等待进程结束
+            return_code = process.wait()
+            log_cf2dns.logger.info("测试ip速度结束返回信息: ----Time: " + str(
+                time.strftime("%Y-%m-%d %H:%M:%S",
+                              time.localtime())) + "----code: " + str(return_code))
+            with open('./CloudflareST/result_ddns.txt', 'r') as ip_file:
+                file_content = ip_file.read()
+                # 按行分割文件内容
+                lines1 = file_content.splitlines()
+
+                # 跳过标题行
+                cfips = []
+                for line in lines1[1:]:
+                    # 按逗号分割每一行
+                    parts = line.split(',')
+                    # 第一个部分就是 IP 地址
+                    ip = parts[0]
+                    log_cf2dns.logger.info("测试ip速度结束返回信息ip: ----Time: " + str(
+                        time.strftime("%Y-%m-%d %H:%M:%S",
+                                      time.localtime())) + "----ip: " + ip)
+                    cfips.append({'ip': ip})
+            for domain, sub_domains in DOMAINS.items():
+                for sub_domain, lines in sub_domains.items():
+                    temp_cf_defips = cfips.copy()
+                    if DNS_SERVER == 1:
+                        ret = cloud.get_record(domain, 20, sub_domain, "CNAME")
+                        if ret["code"] == 0:
+                            for record in ret["data"]["records"]:
+                                if record["line"] == "移动" or record["line"] == "联通" or record["line"] == "电信":
+                                    retMsg = cloud.del_record(domain, record["id"])
+                                    if (retMsg["code"] == 0):
+                                        log_cf2dns.logger.info("DELETE DNS SUCCESS: ----Time: " + str(
+                                            time.strftime("%Y-%m-%d %H:%M:%S",
+                                                          time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: " +
+                                                               record["line"])
+                                    else:
+                                        log_cf2dns.logger.error("DELETE DNS ERROR: ----Time: " + str(
+                                            time.strftime("%Y-%m-%d %H:%M:%S",
+                                                          time.localtime())) + "----DOMAIN: " + domain + "----SUBDOMAIN: " + sub_domain + "----RECORDLINE: " +
+                                                                record["line"] + "----MESSAGE: " + retMsg["message"])
+                    ret = cloud.get_record(domain, 100, sub_domain, recordType)
+                    if DNS_SERVER != 1 or ret["code"] == 0:
+                        if DNS_SERVER == 1 and "Free" in ret["data"]["domain"]["grade"] and AFFECT_NUM > 2:
+                            AFFECT_NUM = 2
+                        def_info = []
+                        for record in ret["data"]["records"]:
+                            info = {}
+                            info["recordId"] = record["id"]
+                            info["value"] = record["value"]
+                            if record["line"] == "默认":
+                                def_info.append(info)
+                        changeDNS("DEF", def_info, temp_cf_defips, domain, sub_domain, cloud)
+
+
+        except Exception as e:
+            traceback.print_exc()
+            log_cf2dns.logger.error("CHANGE DNS ERROR: ----Time: " + str(
+                time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----MESSAGE: " + str(e))
+
+
 if __name__ == '__main__':
     cloud = None
     if DNS_SERVER == 1:
@@ -184,7 +253,8 @@ if __name__ == '__main__':
         cloud = AliApi(SECRETID, SECRETKEY, REGION_ALI)
     elif DNS_SERVER == 3:
         cloud = HuaWeiApi(SECRETID, SECRETKEY, REGION_HW)
-    while(True):
+    while True:
         main(cloud)
+        main_file(cloud)
         log_cf2dns.logger.error("CHANGE DNS SUCCESS: ----Time: " + str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())) + "----MESSAGE: ALL DONE" )
         time.sleep(TIMES)
