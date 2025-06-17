@@ -1,10 +1,11 @@
 version: '3.8'
 services:
   cf2dns:
-    image: cf2dns:v1.0.0
+    image: registry.cn-hangzhou.aliyuncs.com/fengmuxi/cf2dns:v1.0.0
     container_name: cf2dns
     restart: always
     volumes:
       - ./src/config.ini:/cf2dns/src/config.ini
       - ./src/main.py:/cf2dns/src/main.py
+      - ./src/CloudflareST:/cf2dns/CloudflareST
       - ./logs:/cf2dns/logs
